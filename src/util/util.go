@@ -12,6 +12,13 @@ func CheckError(err error) bool{
 	return false
 }
 
+func PanicError(err error, info string) {
+	if err != nil{
+		panic(fmt.Errorf("error %s\nDetailed: %s", err.Error(), info))
+	}
+
+}
+
 func IPbyte2int(ip []byte) (ipint uint32) {
 	var t uint32
 	for _, c := range ip {

@@ -84,16 +84,12 @@ func RunBgpReceiver(uq *util.GCsqueue[bgp.BgpInfo]) {
 
 func RequestLoki(utime int, url string) {
 	resp, err := http.Get(url)
-	if err != nil {
-		fmt.Println("error!")
-		return
-	}
+	util.PanicError(err, "Request Loki error")
 	defer resp.Body.Close()
+
 	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		fmt.Println("error2!")
-		return
-	}
+	util.PanicError(err, "Read Loki Packet error")
+
 	data := *dataPreprocess(body)
 	Json2Flow(data)
 }
