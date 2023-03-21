@@ -1,0 +1,8 @@
+[url]
+servers = ["http://223.193.36.70:33135"]
+base_path = "/loki/api/v1/query_range?query={job=\"netflow\"}!=\"ipv6\""
+
+[query_params]
+# query intervals (seconds)
+interval = 60 
+limit_per_sec = 2000
