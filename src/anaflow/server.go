@@ -12,7 +12,6 @@ import (
 	"anaflow/src/util"
 	"bytes"
 	"encoding/binary"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -143,7 +142,6 @@ func Json2Flow(data []byte) {
 
 func ParseEachElement(value []byte, dataType jsonparser.ValueType, offset int, err error) {
 	var flow_entry bgp.Flow
-	var route, prefix uint32
 	var tv int64
 	jsonparser.EachKey(value,
 		func(idx int, value []byte, vt jsonparser.ValueType, err error) {
@@ -156,10 +154,10 @@ func ParseEachElement(value []byte, dataType jsonparser.ValueType, offset int, e
 			case 2:
 				flow_entry.Dst_ip = util.IPbyte2int(value)
 			case 3:
-				route = util.IPbyte2int(value)
+				flow_entry.Route = util.IPbyte2int(value)
 			case 4:
 				tv, _ = jsonparser.ParseInt(value)
-				prefix = uint32(tv)
+				flow_entry.Prefix = uint16(tv)
 			case 5:
 				tv, _ = jsonparser.ParseInt(value)
 				flow_entry.Src_as = uint32(tv)
@@ -181,6 +179,6 @@ func ParseEachElement(value []byte, dataType jsonparser.ValueType, offset int, e
 				flow_entry.Egress_id = uint16(tv)
 			}
 		}, paths...)
-	flow_entry.Route_prefix = route >> (32 - prefix)
-	fmt.Printf("%v\n", flow_entry)
+
+	AddFlow2Q(flow_entry)
 }

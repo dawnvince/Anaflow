@@ -43,19 +43,24 @@ End_t        netflow.flow_end_sys_up_time / 1000
 Egress_id    netflow.egress_interface
 */
 
-
 // {job="netflow"} != "ipv6" | json Size="source.bytes", Src_ip="source.ip", Dst_ip="destination.ip", Route="dstIP", Prefix="dstPrefixLength", Src_as="bgpSrcAsNumber", Dst_as="bgpDstAsNumber", Observer_ip="observer.ip", Nh_ip="bgpNextHopAddress", Start_t="flowStartSysUpTime", End_t="flowEndSysUpTime", Egress_id="egressInterface"
 
 type Flow struct {
-	Size         uint64
-	Src_ip       uint32
-	Dst_ip       uint32
-	Route_prefix uint32 // Route ip >> prefix
-	Src_as       uint32
-	Dst_as       uint32
-	Observer_ip  uint32 // Router that reports the flow
-	Nh_ip        uint32 // Nexthop ip
-	Start_t      uint32
-	End_t        uint32
-	Egress_id    uint16
+	Egress_id   uint16
+	Prefix      uint16
+	Route       uint32
+	Src_ip      uint32
+	Dst_ip      uint32
+	Src_as      uint32
+	Dst_as      uint32
+	Observer_ip uint32 // Router that reports the flow
+	Nh_ip       uint32 // Nexthop ip
+	Start_t     uint32
+	End_t       uint32
+	Size        uint64
+}
+
+type IpInfo struct {
+	RoutePrefix uint32
+	Size        uint64
 }

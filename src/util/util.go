@@ -4,7 +4,7 @@ import (
 	"fmt"
 )
 
-func CheckError(err error) bool{
+func CheckError(err error) bool {
 	if err != nil {
 		fmt.Printf("Error %s\n", err.Error())
 		return true
@@ -13,7 +13,13 @@ func CheckError(err error) bool{
 }
 
 func PanicError(err error, info string) {
-	if err != nil{
+	defer func() {
+		if err := recover(); err != nil {
+			fmt.Println(err)
+		}
+	}()
+
+	if err != nil {
 		panic(fmt.Errorf("error %s\nDetailed: %s", err.Error(), info))
 	}
 
