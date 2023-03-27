@@ -61,6 +61,14 @@ type Flow struct {
 }
 
 type IpInfo struct {
-	RoutePrefix uint32
+	RoutePrefix uint64 // uint32 IP + uint8 Prefix
 	Size        uint64
+}
+
+type IpLogInfo struct {
+	DstIp     uint32
+	PriRoute  uint64
+	PriFlow   uint64
+	PostRoute uint64
+	PostFlow  uint64
 }

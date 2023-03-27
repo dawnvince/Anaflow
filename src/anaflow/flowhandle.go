@@ -14,9 +14,9 @@ var Flow_queue *util.FlowCsqueue
 
 // Given a route entry, find the list of dst_ip using this route.
 // Nesting structure enables O(1) insertion/deletion time for each Dst_ip
-var priRoute2Dst map[uint32](map[uint32]uint64)  // PriRD
+var priRoute2Dst map[uint64](map[uint32]uint64)  // PriRD
 var priDst2Route map[uint32][]bgp.IpInfo         // PriDR
-var postRoute2Dst map[uint32](map[uint32]uint64) // PostDR
+var postRoute2Dst map[uint64](map[uint32]uint64) // PostDR
 var postDst2Route map[uint32][]bgp.IpInfo        // PostRD
 
 const INITVOLUME = 65536
@@ -24,14 +24,14 @@ const INITVOLUME = 65536
 func init() {
 	Updata_queue = util.NewGCsqueue[bgp.BgpInfo]()
 	Flow_queue = util.NewFlowCsqueue()
-	priRoute2Dst = make(map[uint32](map[uint32]uint64), INITVOLUME)
+	priRoute2Dst = make(map[uint64](map[uint32]uint64), INITVOLUME)
 	priDst2Route = make(map[uint32][]bgp.IpInfo, INITVOLUME)
-	postRoute2Dst = make(map[uint32](map[uint32]uint64), INITVOLUME)
+	postRoute2Dst = make(map[uint64](map[uint32]uint64), INITVOLUME)
 	postDst2Route = make(map[uint32][]bgp.IpInfo, INITVOLUME)
 }
 
 func addFlow2Pri(v_ptr *bgp.Flow) {
-	rp := v_ptr.Route >> (32 - v_ptr.Prefix)
+	rp := uint64(v_ptr.Route)>>(32-v_ptr.Prefix)<<(40-v_ptr.Prefix) + uint64(v_ptr.Prefix)
 
 	// add flow to priRoute2Dst
 	dst_list, ok_out := priRoute2Dst[rp]
@@ -70,7 +70,7 @@ func addFlow2Pri(v_ptr *bgp.Flow) {
 }
 
 func delFlowFromPri(v_ptr *bgp.Flow) {
-	rp := v_ptr.Route >> (32 - v_ptr.Prefix)
+	rp := uint64(v_ptr.Route)>>(32-v_ptr.Prefix)<<(40-v_ptr.Prefix) + uint64(v_ptr.Prefix)
 
 	// delete flow from priRoute2Dst
 	priRoute2Dst[rp][v_ptr.Dst_ip] -= v_ptr.Size
@@ -97,7 +97,7 @@ func delFlowFromPri(v_ptr *bgp.Flow) {
 }
 
 func addFlow2Post(v_ptr *bgp.Flow) {
-	rp := v_ptr.Route >> (32 - v_ptr.Prefix)
+	rp := uint64(v_ptr.Route)>>(32-v_ptr.Prefix)<<(40-v_ptr.Prefix) + uint64(v_ptr.Prefix)
 
 	// add flow to postRoute2Dst
 	dst_list, ok_out := postRoute2Dst[rp]
@@ -136,7 +136,7 @@ func addFlow2Post(v_ptr *bgp.Flow) {
 }
 
 func delFlowFromPost(v_ptr *bgp.Flow) {
-	rp := v_ptr.Route >> (32 - v_ptr.Prefix)
+	rp := uint64(v_ptr.Route)>>(32-v_ptr.Prefix)<<(40-v_ptr.Prefix) + uint64(v_ptr.Prefix)
 
 	// delete flow from postRoute2Dst
 	postRoute2Dst[rp][v_ptr.Dst_ip] -= v_ptr.Size
@@ -203,12 +203,63 @@ func GivenCurrentTime(utime uint32, delay uint32, agetime uint32, syncdevi uint3
 
 	// For each update BU at this time
 	// 		Calculate Update Effect scope
-	// 明确一下作用域重合的问题
 	// If type is add: get dst_IP list that use BU after BGPUPDATE.
 	//		For each IP, if its route queue head is quite BU, we think this IP is affected by BU
 	//		Find this IP in
+	for v, flag := Updata_queue.CsPopOverTime(utime); flag; v, flag = Updata_queue.CsPopOverTime(utime) {
+		GivenUpdate(&v)
+	}
+
 }
 
-func GivenUpdate(bu *bgp.BgpInfo)
+var ipLoginfo bgp.IpLogInfo
 
-// func AddRteBefore(r2d map[uint32]*util.Csqueue, d2r map[uint32]*util.Csqueue)
+func GivenUpdate(bu *bgp.BgpInfo) {
+	SaveBgpUpdate(bu)
+	// Add: find post ip_list according to Route
+	if bu.Msg_type == bgp.BGP_ADD {
+		rp := uint64(bu.New_ip_addr)>>(32-bu.New_ip_prefix)<<(40-bu.New_ip_prefix) + uint64(bu.New_ip_prefix)
+		ipLoginfo.PostRoute = rp
+		for k, v := range postRoute2Dst[rp] {
+			ipLoginfo.DstIp = k
+			ipLoginfo.PostFlow = v
+			route, ok := priDst2Route[k]
+			if ok {
+				ipLoginfo.PriRoute = route[len(route)-1].RoutePrefix
+				ipLoginfo.PriFlow = route[len(route)-1].Size
+			} else {
+				ipLoginfo.PriRoute = 0
+				ipLoginfo.PriFlow = 0
+			}
+			SaveDetailInfo(ipLoginfo)
+		}
+	} else if bu.Msg_type == bgp.BGP_DELETE {
+		rp := uint64(bu.Old_ip_addr)>>(32-bu.Old_ip_prefix)<<(40-bu.Old_ip_prefix) + uint64(bu.Old_ip_prefix)
+		ipLoginfo.PriRoute = rp
+		for k, v := range priRoute2Dst[rp] {
+			ipLoginfo.DstIp = k
+			ipLoginfo.PriFlow = v
+			route, ok := postDst2Route[k]
+			if ok {
+				ipLoginfo.PostRoute = route[0].RoutePrefix
+				ipLoginfo.PostFlow = route[0].Size
+			} else {
+				ipLoginfo.PostRoute = 0
+				ipLoginfo.PostFlow = 0
+			}
+			SaveDetailInfo(ipLoginfo)
+		}
+	} else if bu.Msg_type == bgp.BGP_UPDATE {
+		// check availability
+	} else {
+		util.PanicError(errors.New("func GivenUpdate: "), "Invalid Msg_type\n")
+	}
+}
+
+func SaveBgpUpdate(bu *bgp.BgpInfo) {
+
+}
+
+func SaveDetailInfo(ipLoginfo bgp.IpLogInfo) {
+
+}
