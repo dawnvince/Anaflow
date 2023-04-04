@@ -2,7 +2,7 @@ package bgp
 
 // BGP info type
 const (
-	BGP_ADD = iota
+	BGP_ADD = iota + 1
 	BGP_DELETE
 	BGP_UPDATE
 )
@@ -10,6 +10,7 @@ const (
 // Communication Message with BIRD
 type BgpInfo struct {
 	Msg_type int32
+	Padding  int32 // used to handle alignment difference between C struct and GO struct
 
 	Old_ip_addr   uint32
 	Old_ip_prefix int32
@@ -17,7 +18,6 @@ type BgpInfo struct {
 	Old_first_asn int32
 	Old_path_len  int32
 	Old_pref      int32
-	Old_btime     uint32
 
 	New_ip_addr   uint32
 	New_ip_prefix int32
@@ -25,7 +25,8 @@ type BgpInfo struct {
 	New_first_asn int32
 	New_path_len  int32
 	New_pref      int32
-	New_btime     uint32
+
+	Btime int64
 }
 
 /*
@@ -55,8 +56,8 @@ type Flow struct {
 	Dst_as      uint32
 	Observer_ip uint32 // Router that reports the flow
 	Nh_ip       uint32 // Nexthop ip
-	Start_t     uint32
-	End_t       uint32
+	Start_t     int64
+	End_t       int64
 	Size        uint64
 }
 

@@ -5,4 +5,15 @@ base_path = "/loki/api/v1/query_range?query={job=\"netflow\"}!=\"ipv6\""
 [query_params]
 # query intervals (seconds)
 interval = 60 
+loki_delay = 30
 limit_per_sec = 2000
+
+# [time_settings]
+# delay = 90
+# agetime = 300
+# syncdevi = 5
+
+[time_settings]
+delay = 120  # delay needs to > interval + loki_delay + network_transfer_delay
+agetime = 60
+syncdevi = 5

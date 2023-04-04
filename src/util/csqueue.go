@@ -2,8 +2,6 @@ package util
 
 import (
 	"anaflow/src/bgp"
-	"errors"
-	"fmt"
 	"sync"
 )
 
@@ -75,7 +73,7 @@ func (cq *ICsqueue) CsPop() interface{} {
 
 // only used for Bgp Update Queue
 // return value : 1 continue poping; 0 stop poping
-func (cq *ICsqueue) CsPopOverTime(btime uint32) (int, interface{}) {
+func (cq *ICsqueue) CsPopOverTime(btime int64) (int, interface{}) {
 	cq.mu.Lock()
 	defer cq.mu.Unlock()
 
@@ -86,12 +84,12 @@ func (cq *ICsqueue) CsPopOverTime(btime uint32) (int, interface{}) {
 	// only return Bgpinfo type. Otherwise continue to pop
 	info, ok := cq.start.value.(bgp.BgpInfo)
 	if !ok {
-		fmt.Printf("Error in Csqueue: Cannot convert to a Bgpinfo\n")
+		// fmt.Printf("Error in Csqueue: Cannot convert to a Bgpinfo\n")
 		cq.Pop()
 		return 1, nil
 	}
 
-	if info.New_btime < btime {
+	if info.Btime < btime {
 		n := cq.Pop()
 		return 1, n
 	}
@@ -106,7 +104,7 @@ type gnode[T QueueType] struct {
 	prev  *gnode[T]
 	next  *gnode[T]
 	v     T
-	utime uint32
+	utime int64
 }
 type GCsqueue[T QueueType] struct {
 	start  *gnode[T]
@@ -123,7 +121,7 @@ func NewGCsqueue[T QueueType]() *GCsqueue[T] {
 	}
 }
 
-func (cq *GCsqueue[T]) Push(v T, utime uint32) {
+func (cq *GCsqueue[T]) Push(v T, utime int64) {
 	n := &gnode[T]{nil, nil, v, utime}
 	if cq.length == 0 {
 		cq.start = n
@@ -136,7 +134,7 @@ func (cq *GCsqueue[T]) Push(v T, utime uint32) {
 	cq.length++
 }
 
-func (cq *GCsqueue[T]) CsPush(v T, utime uint32) {
+func (cq *GCsqueue[T]) CsPush(v T, utime int64) {
 	cq.mu.Lock()
 	defer cq.mu.Unlock()
 
@@ -171,7 +169,7 @@ func (cq *GCsqueue[T]) CsPop() (T, bool) {
 }
 
 // return value : true continue poping; false stop poping
-func (cq *GCsqueue[T]) CsPopOverTime(utime uint32) (T, bool) {
+func (cq *GCsqueue[T]) CsPopOverTime(utime int64) (T, bool) {
 	cq.mu.Lock()
 	defer cq.mu.Unlock()
 
@@ -179,8 +177,7 @@ func (cq *GCsqueue[T]) CsPopOverTime(utime uint32) (T, bool) {
 		var v T
 		return v, false
 	}
-
-	if cq.start.utime < utime {
+	if cq.start.utime <= utime {
 		v, b := cq.Pop()
 		return v, b
 	}
@@ -190,17 +187,16 @@ func (cq *GCsqueue[T]) CsPopOverTime(utime uint32) (T, bool) {
 
 // As Flow Queue needs another three pointers, we rewrite the flow queue
 type flownode struct {
-	prev  *flownode
 	next  *flownode
 	v     bgp.Flow
-	utime uint32
+	utime int64
 }
 
 type FlowCsqueue struct {
-	pri_s_t    uint32
-	pri_e_t    uint32
-	post_s_t   uint32
-	post_e_t   uint32
+	pri_s_t    int64
+	pri_e_t    int64
+	post_s_t   int64
+	post_e_t   int64
 	length     int
 	pri_start  *flownode // = q_start
 	pri_end    *flownode
@@ -211,34 +207,30 @@ type FlowCsqueue struct {
 }
 
 func NewFlowCsqueue() *FlowCsqueue {
-	return &FlowCsqueue{
-		pri_start:  nil,
-		pri_end:    nil,
-		post_start: nil,
-		post_end:   nil,
-		q_end:      nil,
-		length:     0,
-	}
+	fq := new(FlowCsqueue)
+	fq.pri_start = &flownode{next: nil, utime: int64((^uint64(0)) >> 1)}
+	fq.pri_end = fq.pri_start
+	fq.post_end = fq.pri_start
+	fq.post_start = fq.pri_start
+	fq.q_end = fq.pri_start
+	fq.length = 0
+	return fq
 }
 
-func (cq *FlowCsqueue) Push(v bgp.Flow, utime uint32) {
+func (cq *FlowCsqueue) Push(v bgp.Flow, utime int64) {
 
-	n := &flownode{nil, nil, v, utime}
+	n := &flownode{nil, v, utime}
 	if cq.length == 0 {
-		cq.pri_start = n
-		cq.pri_end = n
-		cq.post_start = n
-		cq.post_end = n
+		cq.pri_start.next = n
 		cq.q_end = n
 	} else {
-		n.prev = cq.q_end
 		cq.q_end.next = n
 		cq.q_end = n
 	}
 	cq.length++
 }
 
-func (cq *FlowCsqueue) CsPush(v bgp.Flow, utime uint32) {
+func (cq *FlowCsqueue) CsPush(v bgp.Flow, utime int64) {
 	cq.mu.Lock()
 	defer cq.mu.Unlock()
 
@@ -247,22 +239,17 @@ func (cq *FlowCsqueue) CsPush(v bgp.Flow, utime uint32) {
 
 // save one local variable copy
 func (cq *FlowCsqueue) PopWoReturn() {
-	if cq.length == 0 {
-		return
-	}
-	n := cq.pri_start
+	n := cq.pri_start.next
 	if n.next == nil {
-		if cq.length != 1 {
-			PanicError(errors.New("func PopWoReturn: "), "n.next = NIL while length != 1\n")
-		}
-		cq.pri_start = nil
-		cq.q_end = nil
+		cq.pri_start.next = nil
+		cq.pri_end = cq.pri_start
+		cq.post_start = cq.pri_start
+		cq.post_end = cq.pri_start
+		cq.q_end = cq.pri_start
 	} else {
-		n.next.prev = nil
-		cq.pri_start = n.next
+		cq.pri_start.next = n.next
 	}
 	n.next = nil
-	n.prev = nil
 	cq.length--
 }
 
@@ -273,8 +260,8 @@ func (cq *FlowCsqueue) CsPopPriStartOverTime(v_ptr *bgp.Flow) bool {
 	if cq.length == 0 {
 		return false
 	}
-	if cq.pri_start.utime <= cq.pri_s_t {
-		*v_ptr = cq.pri_start.v
+	if cq.pri_start.next.utime <= cq.pri_s_t {
+		*v_ptr = cq.pri_start.next.v
 		cq.PopWoReturn()
 		return true
 	}
@@ -288,8 +275,11 @@ func (cq *FlowCsqueue) CsOnePriEndOvertime(v_ptr *bgp.Flow) bool {
 	if cq.length == 0 {
 		return false
 	}
-	if cq.pri_end.utime <= cq.pri_e_t {
-		*v_ptr = cq.pri_end.v
+	if cq.pri_end.next == nil {
+		return false
+	}
+	if cq.pri_end.next.utime <= cq.pri_e_t {
+		*v_ptr = cq.pri_end.next.v
 		cq.pri_end = cq.pri_end.next
 		return true
 	}
@@ -303,8 +293,11 @@ func (cq *FlowCsqueue) CsOnePostStartOvertime(v_ptr *bgp.Flow) bool {
 	if cq.length == 0 {
 		return false
 	}
-	if cq.post_start.utime <= cq.post_s_t {
-		*v_ptr = cq.post_start.v
+	if cq.post_start.next == nil {
+		return false
+	}
+	if cq.post_start.next.utime <= cq.post_s_t {
+		*v_ptr = cq.post_start.next.v
 		cq.post_start = cq.post_start.next
 		return true
 	}
@@ -318,17 +311,31 @@ func (cq *FlowCsqueue) CsOnePostEndOvertime(v_ptr *bgp.Flow) bool {
 	if cq.length == 0 {
 		return false
 	}
-	if cq.post_end.utime <= cq.post_e_t {
-		*v_ptr = cq.post_end.v
+	if cq.post_end.next == nil {
+		return false
+	}
+	if cq.post_end.next.utime <= cq.post_e_t {
+		*v_ptr = cq.post_end.next.v
 		cq.post_end = cq.post_end.next
 		return true
 	}
 	return false
 }
 
-func (cq *FlowCsqueue) ModifyTime(utime uint32, delay uint32, agetime uint32, syncdevi uint32) {
-	cq.pri_s_t = utime - delay - 2*agetime - 2*syncdevi
-	cq.pri_e_t = cq.pri_s_t + agetime
-	cq.post_s_t = utime - delay - agetime
+func (cq *FlowCsqueue) ModifyTime(utime int64, delay int64, agetime int64, syncdevi int64) {
+	cq.mu.Lock()
+	defer cq.mu.Unlock()
+
+	cq.pri_s_t = utime - delay - 2*agetime
+	cq.pri_e_t = utime - delay - agetime - syncdevi
+	cq.post_s_t = utime - delay - agetime + syncdevi
 	cq.post_e_t = utime - delay
+}
+
+func (cq *FlowCsqueue) GetLength() int {
+	cq.mu.Lock()
+	defer cq.mu.Unlock()
+
+	l := cq.length
+	return l
 }

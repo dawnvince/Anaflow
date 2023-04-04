@@ -12,6 +12,7 @@ import (
 	"anaflow/src/util"
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -37,7 +38,6 @@ const buf_len = 1000
 		old_first_asn 	4 byte
 		old_path_len 	4 byte
 		old_pref 		4 byte
-		old_btime 		4 byte
 
 	NEW_RTE_INFO(all 0 if not exists)
 		new_ip_addr 	4 byte
@@ -46,7 +46,6 @@ const buf_len = 1000
 		new_first_asn 	4 byte
 		new_path_len 	4 byte
 		new_pref 		4 byte
-		new_btime 		4 byte
 */
 
 func Packet2info(buf []byte, bgpinfo *bgp.BgpInfo) {
@@ -75,13 +74,13 @@ func RunBgpReceiver(uq *util.GCsqueue[bgp.BgpInfo]) {
 		content := buf[:size]
 		Packet2info(content, bgpinfo)
 		// fmt.Printf("test result : %#v\n", bgpinfo)
-		uq.CsPush(*bgpinfo, bgpinfo.New_btime)
+		uq.CsPush(*bgpinfo, bgpinfo.Btime)
 	}
 }
 
 // FR Implement
 
-func RequestLoki(utime int, url string) {
+func RequestLoki(utime int64, url string) {
 	resp, err := http.Get(url)
 	util.PanicError(err, "Request Loki error")
 	defer resp.Body.Close()
@@ -91,6 +90,8 @@ func RequestLoki(utime int, url string) {
 
 	data := *dataPreprocess(body)
 	Json2Flow(data)
+
+	fmt.Printf("After RequestLoki, FlowQueue's length is %d\n", Flow_queue.GetLength())
 }
 
 /*
@@ -108,12 +109,12 @@ var paths = [][]string{
 	{"[1]", "network", "bytes"},
 	{"[1]", "source", "ip"},
 	{"[1]", "destination", "ip"},
-	{"[1]", "netflow", "destination_ipv4_address"},
-	{"[1]", "netflow", "destination_ipv4_prefix_length"},
-	{"[1]", "netflow", "bgp_source_as_number"},
-	{"[1]", "netflow", "bgp_destination_as_number"},
+	{"[1]", "dstIP"},
+	{"[1]", "dstPrefixLength"},
+	{"[1]", "bgpSrcAsNumber"},
+	{"[1]", "bgpDstAsNumber"},
 	{"[1]", "observer", "ip"},
-	{"[1]", "netflow", "bgp_next_hop_ipv4_address"},
+	{"[1]", "bgpNextHopAddress"},
 	{"[1]", "event", "start"},
 	{"[1]", "event", "end"},
 	{"[1]", "netflow", "egress_interface"},
@@ -170,10 +171,10 @@ func ParseEachElement(value []byte, dataType jsonparser.ValueType, offset int, e
 				flow_entry.Nh_ip = util.IPbyte2int(value)
 			case 9:
 				t, _ := time.Parse(time.RFC3339, string(value))
-				flow_entry.Start_t = uint32(t.Unix())
+				flow_entry.Start_t = int64(t.Unix())
 			case 10:
 				t, _ := time.Parse(time.RFC3339, string(value))
-				flow_entry.End_t = uint32(t.Unix())
+				flow_entry.End_t = int64(t.Unix())
 			case 11:
 				tv, _ = jsonparser.ParseInt(value)
 				flow_entry.Egress_id = uint16(tv)
