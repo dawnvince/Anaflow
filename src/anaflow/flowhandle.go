@@ -3,6 +3,7 @@ package anaflow
 import (
 	"anaflow/src/bgp"
 	"anaflow/src/util"
+	"bufio"
 	"errors"
 	"fmt"
 )
@@ -10,6 +11,7 @@ import (
 // Global shared structures. Need concurrent safe methods.
 var Updata_queue *util.GCsqueue[bgp.BgpInfo]
 var Flow_queue *util.FlowCsqueue
+var File_writer *bufio.Writer
 
 // Local structure without concurrent problems.
 
@@ -246,6 +248,7 @@ func GivenUpdate(bu *bgp.BgpInfo) {
 	} else if bu.Msg_type == bgp.BGP_DELETE {
 		rp := uint64(bu.Old_ip_addr)>>(32-bu.Old_ip_prefix)<<(40-bu.Old_ip_prefix) + uint64(bu.Old_ip_prefix)
 		ipLoginfo.PriRoute = rp
+		fmt.Printf("\033[34mUpdate DEL :\033[0m %+v\n", ipLoginfo)
 		for k, v := range priRoute2Dst[rp] {
 			ipLoginfo.DstIp = k
 			ipLoginfo.PriFlow = v
@@ -279,4 +282,6 @@ func SaveBgpUpdate(bu *bgp.BgpInfo) {
 
 func SaveDetailInfo(ipLoginfo bgp.IpLogInfo) {
 	fmt.Printf("\033[33mDetailed : %+v\033[0m\n", ipLoginfo)
+	// Write to buffer and files
+	File_writer.WriteString(fmt.Sprintf("LOG info: %+v\n", ipLoginfo))
 }

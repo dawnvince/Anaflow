@@ -3,6 +3,7 @@ package main
 import (
 	"anaflow/src/anaflow"
 	"anaflow/src/util"
+	"bufio"
 	"fmt"
 	"os"
 	"os/signal"
@@ -35,6 +36,13 @@ func main() {
 	defer ticker_flow.Stop()
 	ticker_update := time.NewTicker(1 * time.Second)
 	defer ticker_update.Stop()
+
+	log_file := "./scope.log"
+	file, err := os.OpenFile(log_file, os.O_CREATE | os.O_APPEND | os.O_WRONLY, 0666)
+	util.CheckError(err)
+	defer file.Close()
+
+	anaflow.File_writer = bufio.NewWriter(file)
 
 	go anaflow.RunBgpReceiver(anaflow.Updata_queue)
 
